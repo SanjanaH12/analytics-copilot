@@ -1,0 +1,67 @@
+question,pred_sql,status,latency_s
+How many orders are there in total?,SELECT count(order_id) FROM orders;,pass,1.22
+How many orders were delivered?,"SELECT count(*) 
+FROM orders 
+WHERE order_status = 'delivered';",pass,1.03
+What are the top 5 customer states by number of orders?,"SELECT 
+    c.customer_state,
+    COUNT(o.order_id) AS order_count
+FROM 
+    customers c
+JOIN 
+    orders o ON c.customer_id = o.customer_id
+GROUP BY 
+    c.customer_state
+ORDER BY 
+    order_count DESC
+LIMIT 5;",pass,1.45
+What is the average review score?,"SELECT ROUND(AVG(review_score)::numeric, 2) AS avg_review_score
+FROM order_reviews;",pass,1.56
+What is the total revenue from delivered orders?,"SELECT ROUND(CAST(SUM(oi.price) AS numeric), 2) AS total_revenue
+FROM orders o
+JOIN order_items oi ON o.order_id = oi.order_id
+WHERE o.order_status = 'delivered';",pass,2.86
+What are the top 5 product categories in English by revenue?,"SELECT 
+    t.product_category_name_english,
+    ROUND(SUM(oi.price)::numeric, 2) AS revenue
+FROM order_items oi
+JOIN products p ON oi.product_id = p.product_id
+JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name
+GROUP BY t.product_category_name_english
+ORDER BY revenue DESC
+LIMIT 5;",pass,1.97
+What percentage of delivered orders arrived later than the estimated date?,"SELECT 
+    ROUND(
+        100.0 * COUNT(CASE WHEN order_delivered_customer_date > order_estimated_delivery_date THEN 1 END) 
+        / COUNT(*), 
+        2
+    ) AS percentage_delayed_orders
+FROM orders
+WHERE order_status = 'delivered'
+  AND order_delivered_customer_date IS NOT NULL
+  AND order_estimated_delivery_date IS NOT NULL;",pass,1.75
+How many orders were placed in each month of 2017?,"SELECT 
+    TO_CHAR(order_purchase_timestamp, 'YYYY-MM') AS month,
+    COUNT(order_id) AS order_count
+FROM 
+    orders
+WHERE 
+    order_purchase_timestamp >= '2017-01-01 00:00:00'
+    AND order_purchase_timestamp < '2018-01-01 00:00:00'
+GROUP BY 
+    TO_CHAR(order_purchase_timestamp, 'YYYY-MM')
+ORDER BY 
+    month;",pass,1.95
+What is the most common payment type?,"SELECT payment_type
+FROM order_payments
+GROUP BY payment_type
+ORDER BY count(*) DESC
+LIMIT 1;",pass,1.73
+How many unique customers placed more than one order?,"SELECT count(*) 
+FROM (
+    SELECT c.customer_unique_id
+    FROM orders o
+    JOIN customers c ON o.customer_id = c.customer_id
+    GROUP BY c.customer_unique_id
+    HAVING count(DISTINCT o.order_id) > 1
+) t;",pass,1.96

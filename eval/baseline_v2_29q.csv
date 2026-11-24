@@ -1,0 +1,269 @@
+question,pred_sql,status,latency_s
+How many orders are there in total?,SELECT count(order_id) FROM orders;,pass,1.36
+How many orders were delivered?,"SELECT count(*) 
+FROM orders 
+WHERE order_status = 'delivered';",pass,1.66
+What are the top 5 customer states by number of orders?,"SELECT 
+    c.customer_state,
+    COUNT(o.order_id) AS order_count
+FROM 
+    customers c
+JOIN 
+    orders o ON c.customer_id = o.customer_id
+GROUP BY 
+    c.customer_state
+ORDER BY 
+    order_count DESC
+LIMIT 5;",pass,2.71
+What is the average review score?,"SELECT ROUND(AVG(review_score)::numeric, 2) AS avg_review_score
+FROM order_reviews;",pass,1.59
+What is the total revenue from delivered orders?,"SELECT ROUND(SUM(oi.price)::numeric, 2) AS total_revenue
+FROM orders o
+JOIN order_items oi ON o.order_id = oi.order_id
+WHERE o.order_status = 'delivered';",pass,1.35
+What are the top 5 product categories in English by revenue?,"SELECT 
+    t.product_category_name_english,
+    ROUND(SUM(oi.price)::numeric, 2) AS revenue
+FROM order_items oi
+JOIN products p ON oi.product_id = p.product_id
+JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name
+GROUP BY t.product_category_name_english
+ORDER BY revenue DESC
+LIMIT 5;",pass,1.78
+What percentage of delivered orders arrived later than the estimated date?,"SELECT 
+    ROUND(
+        100.0 * COUNT(CASE WHEN order_delivered_customer_date > order_estimated_delivery_date THEN 1 END) 
+        / COUNT(*), 
+        2
+    ) AS percentage_delayed
+FROM orders
+WHERE order_status = 'delivered'
+  AND order_delivered_customer_date IS NOT NULL
+  AND order_estimated_delivery_date IS NOT NULL;",pass,1.91
+How many orders were placed in each month of 2017?,"SELECT 
+    TO_CHAR(order_purchase_timestamp, 'YYYY-MM') AS order_month,
+    COUNT(order_id) AS order_count
+FROM 
+    orders
+WHERE 
+    order_purchase_timestamp >= '2017-01-01 00:00:00' 
+    AND order_purchase_timestamp < '2018-01-01 00:00:00'
+GROUP BY 
+    TO_CHAR(order_purchase_timestamp, 'YYYY-MM')
+ORDER BY 
+    order_month;",pass,2.03
+What is the most common payment type?,"SELECT payment_type
+FROM order_payments
+GROUP BY payment_type
+ORDER BY count(*) DESC
+LIMIT 1;",pass,1.78
+How many unique customers placed more than one order?,"SELECT count(*) 
+FROM (
+    SELECT c.customer_unique_id
+    FROM orders o
+    JOIN customers c ON o.customer_id = c.customer_id
+    GROUP BY c.customer_unique_id
+    HAVING count(DISTINCT o.order_id) > 1
+) t;",pass,1.69
+What is the average delivery time in days (purchase to customer delivery) for delivered orders? Return one number rounded to 2 decimals.,"SELECT ROUND(AVG(EXTRACT(EPOCH FROM (order_delivered_customer_date - order_purchase_timestamp)) / 86400)::numeric, 2)
+FROM orders
+WHERE order_status = 'delivered'
+  AND order_delivered_customer_date IS NOT NULL
+  AND order_purchase_timestamp IS NOT NULL;",pass,1.84
+Which 5 sellers have the highest total revenue from delivered orders? Return seller_id and revenue.,"SELECT 
+    s.seller_id, 
+    ROUND(CAST(SUM(oi.price) AS numeric), 2) AS revenue
+FROM 
+    sellers s
+JOIN 
+    order_items oi ON s.seller_id = oi.seller_id
+JOIN 
+    orders o ON oi.order_id = o.order_id
+WHERE 
+    o.order_status = 'delivered'
+GROUP BY 
+    s.seller_id
+ORDER BY 
+    revenue DESC
+LIMIT 5;",pass,1.37
+"Among English product categories with at least 500 order items, which 5 have the lowest average review score? Return category and average score.","SELECT 
+    t.product_category_name_english AS category,
+    ROUND(AVG(r.review_score::numeric), 2) AS average_score
+FROM order_items oi
+JOIN products p ON oi.product_id = p.product_id
+JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name
+JOIN order_reviews r ON oi.order_id = r.order_id
+GROUP BY t.product_category_name_english
+HAVING COUNT(oi.order_item_id) >= 500
+ORDER BY average_score ASC
+LIMIT 5;",pass,1.5
+What was the month-over-month percentage change in delivered order count for each month of 2017? Return month and percentage change.,"WITH monthly_orders AS (
+    SELECT 
+        DATE_TRUNC('month', order_purchase_timestamp)::date AS order_month,
+        COUNT(order_id) AS delivered_count
+    FROM orders
+    WHERE order_status = 'delivered'
+      AND order_purchase_timestamp >= '2017-01-01'::timestamp
+      AND order_purchase_timestamp < '2018-01-01'::timestamp
+    GROUP BY 1
+),
+ordered_months AS (
+    SELECT 
+        order_month,
+        delivered_count,
+        LAG(delivered_count) OVER (ORDER BY order_month) AS prev_month_count
+    FROM monthly_orders
+)
+SELECT 
+    order_month AS month,
+    ROUND(
+        ((delivered_count - prev_month_count)::numeric / prev_month_count) * 100, 
+        2
+    ) AS percentage_change
+FROM ordered_months
+ORDER BY order_month;",pass,1.6
+Which customer state has the highest average freight value per order item? Return the state and the average.,"SELECT 
+    c.customer_state, 
+    ROUND(CAST(AVG(oi.freight_value) AS numeric), 2) AS avg_freight_value
+FROM 
+    customers c
+JOIN 
+    orders o ON c.customer_id = o.customer_id
+JOIN 
+    order_items oi ON o.order_id = oi.order_id
+GROUP BY 
+    c.customer_state
+ORDER BY 
+    avg_freight_value DESC
+LIMIT 1;",pass,1.51
+How many orders were paid using more than one payment type?,"SELECT count(*) 
+FROM (
+    SELECT order_id 
+    FROM order_payments 
+    GROUP BY order_id 
+    HAVING count(DISTINCT payment_type) > 1
+) sub;",pass,1.28
+What is the average number of installments for credit card payments?,"SELECT ROUND(AVG(payment_installments)::numeric, 2) AS avg_installments
+FROM order_payments
+WHERE payment_type = 'credit_card';",pass,1.58
+"For delivered orders, which 5 customer states have the highest percentage of late deliveries? Return state and percentage.","SELECT 
+    c.customer_state,
+    ROUND(
+        100.0 * COUNT(CASE WHEN o.order_delivered_customer_date > o.order_estimated_delivery_date THEN 1 END) / COUNT(*), 
+        2
+    ) AS late_delivery_percentage
+FROM 
+    orders o
+JOIN 
+    customers c ON o.customer_id = c.customer_id
+WHERE 
+    o.order_status = 'delivered'
+    AND o.order_delivered_customer_date IS NOT NULL
+    AND o.order_estimated_delivery_date IS NOT NULL
+GROUP BY 
+    c.customer_state
+ORDER BY 
+    late_delivery_percentage DESC
+LIMIT 5;",pass,1.6
+"For each of the 3 customer states with the most orders, which English product category has the highest revenue? Return state and category only.","WITH top_states AS (
+    SELECT c.customer_state
+    FROM orders o
+    JOIN customers c ON o.customer_id = c.customer_id
+    GROUP BY c.customer_state
+    ORDER BY count(o.order_id) DESC
+    LIMIT 3
+),
+state_category_revenue AS (
+    SELECT 
+        c.customer_state,
+        COALESCE(t.product_category_name_english, p.product_category_name) AS english_category,
+        SUM(oi.price) AS total_revenue,
+        ROW_NUMBER() OVER (PARTITION BY c.customer_state ORDER BY SUM(oi.price) DESC) as rn
+    FROM orders o
+    JOIN customers c ON o.customer_id = c.customer_id
+    JOIN order_items oi ON o.order_id = oi.order_id
+    JOIN products p ON oi.product_id = p.product_id
+    LEFT JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name
+    JOIN top_states ts ON c.customer_state = ts.customer_state
+    GROUP BY c.customer_state, COALESCE(t.product_category_name_english, p.product_category_name)
+)
+SELECT customer_state, english_category
+FROM state_category_revenue
+WHERE rn = 1;",pass,1.97
+How many sellers have sold more than 100 order items?,"SELECT count(*) 
+FROM (
+    SELECT seller_id 
+    FROM order_items 
+    GROUP BY seller_id 
+    HAVING count(*) > 100
+) AS t;",pass,1.47
+What percentage of reviews have a score of 1 or 2? Round to 2 decimals.,"SELECT 
+    ROUND(
+        100.0 * COUNT(CASE WHEN review_score IN (1, 2) THEN 1 END) / COUNT(*), 
+        2
+    ) AS low_review_percentage
+FROM order_reviews;",pass,5.68
+What is the average order value (price plus freight_value summed per order) for delivered orders?,"SELECT ROUND(CAST(AVG(order_total) AS numeric), 2) AS avg_order_value
+FROM (
+    SELECT o.order_id, SUM(oi.price + oi.freight_value) AS order_total
+    FROM orders o
+    JOIN order_items oi ON o.order_id = oi.order_id
+    WHERE o.order_status = 'delivered'
+    GROUP BY o.order_id
+) sub;",pass,1.85
+Which month of 2018 had the most canceled orders? Return the month as YYYY-MM and the count.,"SELECT 
+    TO_CHAR(order_purchase_timestamp, 'YYYY-MM') AS month,
+    COUNT(*) AS canceled_orders_count
+FROM 
+    orders
+WHERE 
+    order_status = 'canceled'
+    AND order_purchase_timestamp >= '2018-01-01 00:00:00'
+    AND order_purchase_timestamp < '2019-01-01 00:00:00'
+GROUP BY 
+    TO_CHAR(order_purchase_timestamp, 'YYYY-MM')
+ORDER BY 
+    canceled_orders_count DESC
+LIMIT 1;",pass,1.61
+How many products have no category name?,"SELECT count(*) 
+FROM products 
+WHERE product_category_name IS NULL;",pass,1.32
+What percentage of unique customers (by customer_unique_id) placed more than one order? Round to 2 decimals.,"SELECT 
+    ROUND(
+        100.0 * COUNT(CASE WHEN order_count > 1 THEN 1 END) / COUNT(*),
+        2
+    ) AS percentage_repeat_customers
+FROM (
+    SELECT c.customer_unique_id, COUNT(o.order_id) AS order_count
+    FROM customers c
+    JOIN orders o ON c.customer_id = o.customer_id
+    GROUP BY c.customer_unique_id
+) sub;",pass,1.54
+What is the average review score of delivered orders that arrived later than the estimated date?,"SELECT ROUND(AVG(r.review_score)::numeric, 2) AS avg_review_score
+FROM orders o
+JOIN order_reviews r ON o.order_id = r.order_id
+WHERE o.order_status = 'delivered'
+  AND o.order_delivered_customer_date > o.order_estimated_delivery_date;",pass,1.33
+Which payment type has the highest total payment value? Return only the payment type.,"SELECT payment_type
+FROM order_payments
+GROUP BY payment_type
+ORDER BY SUM(payment_value) DESC
+LIMIT 1;",pass,1.35
+Which seller state has the most sellers? Return only the state.,"SELECT seller_state
+FROM sellers
+GROUP BY seller_state
+ORDER BY count(*) DESC
+LIMIT 1;",pass,1.31
+What is the total revenue from delivered orders for each purchase year? Return year and revenue.,"SELECT 
+    EXTRACT(YEAR FROM o.order_purchase_timestamp) AS purchase_year,
+    ROUND(CAST(SUM(oi.price) AS numeric), 2) AS revenue
+FROM 
+    orders o
+JOIN 
+    order_items oi ON o.order_id = oi.order_id
+WHERE 
+    o.order_status = 'delivered'
+GROUP BY 
+    EXTRACT(YEAR FROM o.order_purchase_timestamp)
+ORDER BY 
+    purchase_year;",wrong_result,1.67

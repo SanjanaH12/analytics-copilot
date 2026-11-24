@@ -1,0 +1,14 @@
+venv/
+Data/
+.env
+.vscode/
+logs/
+load_data.py
+__pycache__/
+*.pyc
+test_llm.py
+list_models.py
+diag.py*.session.sql
+setup.sql
+*.session.sql
+setup.sql
